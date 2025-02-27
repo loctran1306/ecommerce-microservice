@@ -10,7 +10,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  async register(@Body() body: { email: string; password: string }) {
+  async register(@Body() body: any) {
     return this.userService.send({ cmd: 'register' }, body);
   }
   @Public()

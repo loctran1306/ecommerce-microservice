@@ -1,6 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
+import {
+  Transport,
+  MicroserviceOptions,
+  RpcException,
+} from '@nestjs/microservices';
+import { ResponseInterceptor } from './config/response/response.interceptor';
+import { CustomRpcExceptionFilter } from './config/response/exception.filter';
+import { ArgumentsHost, Catch, RpcExceptionFilter } from '@nestjs/common';
+import { throwError } from 'rxjs';
 
 async function bootstrap() {
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(
@@ -14,6 +22,9 @@ async function bootstrap() {
       },
     },
   );
+
+  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.useGlobalFilters(new CustomRpcExceptionFilter());
 
   await app.listen();
   console.log('User Service is running...');

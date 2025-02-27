@@ -7,18 +7,52 @@ import { CreateUserDto } from './dto/create-user.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // Register
   @MessagePattern({ cmd: 'register' })
   async register(@Payload() data: CreateUserDto) {
     return this.usersService.createUser(data);
   }
 
+  // Login
   @MessagePattern({ cmd: 'login' })
   async login(@Payload() data: { email: string; password: string }) {
-    console.log('login', data);
     return this.usersService.validateUser(data.email, data.password);
   }
+
+  // Get user info
   @MessagePattern({ cmd: 'get_profile' })
-  async getProfile(@Payload() data: { userId: number; email: string }) {
-    return this.usersService.getProfile(data.userId, data.email);
+  async getProfile(
+    @Payload() data: { user: { userId: number; email: string } },
+  ) {
+    const { userId, email } = data.user;
+    return this.usersService.getProfile(userId, email);
+  }
+
+  // Get all users
+  @MessagePattern({ cmd: 'get_users' })
+  async getAllUser(
+    @Payload() data: { user: { userId: number; email: string } },
+  ) {
+    return this.usersService.getAllUsers(data);
+  }
+
+  // Update user
+  @MessagePattern({ cmd: 'update_user' })
+  async updateUser(
+    @Payload()
+    data: {
+      data: CreateUserDto;
+      user: { userId: number; email: string };
+    },
+  ) {
+    return this.usersService.updateUser(data);
+  }
+
+  // Delete user
+  @MessagePattern({ cmd: 'delete_user' })
+  async deleteUser(
+    @Payload() data: { user: { userId: number; email: string } },
+  ) {
+    return this.usersService.deleteUser(data);
   }
 }
