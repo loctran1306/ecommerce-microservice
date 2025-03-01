@@ -38,6 +38,9 @@ export class User {
   @Column({ default: 'VN' })
   postalCode: string;
 
+  @Column({ nullable: true })
+  refreshToken: string;
+
   @Column({ default: true })
   isActive: boolean;
 }

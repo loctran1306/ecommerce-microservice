@@ -5,13 +5,14 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './users.entity';
 import { JwtModule } from '@nestjs/jwt';
+import { RedisService } from 'src/redis/redis.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'secret',
-      signOptions: { expiresIn: '1h' },
+      signOptions: { expiresIn: '1m' },
     }),
     ClientsModule.register([
       {
@@ -26,6 +27,6 @@ import { JwtModule } from '@nestjs/jwt';
     ]),
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [UsersService, RedisService],
 })
 export class UsersModule {}

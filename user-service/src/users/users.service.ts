@@ -1,26 +1,24 @@
 import {
-  BadRequestException,
-  ConflictException,
-  HttpException,
   HttpStatus,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
-import { User } from './users.entity';
-import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
-import { CreateUserDto } from './dto/create-user.dto';
 import { RpcException } from '@nestjs/microservices';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
+import { RedisService } from 'src/redis/redis.service';
+import { Repository } from 'typeorm';
+import { CreateUserDto } from './dto/create-user.dto';
+import { User } from './users.entity';
+import { Response } from 'express';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly redisService: RedisService,
   ) {}
   async createUser(data: CreateUserDto): Promise<User> {
     const existingUser = await this.findUserByEmail(data.email);
@@ -65,7 +63,7 @@ export class UsersService {
   async validateUser(
     email: string,
     password: string,
-  ): Promise<{ access_token: string } | string | null> {
+  ): Promise<{ access_token: string; refresh_token: string } | string | null> {
     const user = await this.findUserByEmail(email);
     if (!user) {
       throw new RpcException({
@@ -85,8 +83,16 @@ export class UsersService {
     try {
       // Generate JWT
       const payload = { userId: user.id, email: user.email };
+      const token = this.jwtService.sign(payload);
+      const refreshToken = this.jwtService.sign(payload, {
+        expiresIn: '7d',
+      });
+      await this.redisService.setToken(user.id, refreshToken, 86400);
+      await this.userRepository.update(user.id, { refreshToken: refreshToken });
+
       return {
-        access_token: this.jwtService.sign(payload),
+        access_token: token,
+        refresh_token: refreshToken,
       };
     } catch (error) {
       throw new RpcException({
@@ -106,7 +112,7 @@ export class UsersService {
       });
     }
     try {
-      const { password, ...result } = user;
+      const { password, refreshToken, ...result } = user;
       return result as User;
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -232,6 +238,67 @@ export class UsersService {
       throw new RpcException({
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
         message: 'Internal server error',
+      });
+    }
+  }
+
+  // Refresh token
+  async verifyToken(data: string) {
+    try {
+      const verify = this.jwtService.verify(data);
+      return verify;
+    } catch (error) {
+      return false;
+    }
+  }
+  async refreshToken(refreshToken: string) {
+    try {
+      const decoded = this.jwtService.decode(refreshToken) as {
+        userId: number;
+        email: string;
+      };
+
+      if (!decoded || !decoded.userId) {
+        throw new RpcException({
+          statusCode: HttpStatus.UNAUTHORIZED,
+          message: 'Invalid refresh token',
+        });
+      }
+
+      let savedToken = await this.redisService.getToken(decoded.userId);
+
+      if (!savedToken) {
+        const user = await this.userRepository.findOne({
+          where: { id: decoded.userId },
+        });
+
+        if (!user || user.refreshToken !== refreshToken) {
+          throw new RpcException({
+            statusCode: HttpStatus.UNAUTHORIZED,
+            message: 'Refresh token is invalid or expired',
+          });
+        }
+
+        savedToken = user.refreshToken; // Lấy token từ DB
+      }
+      const verify = await this.verifyToken(savedToken);
+      if (!verify) {
+        throw new RpcException({
+          statusCode: HttpStatus.UNAUTHORIZED,
+          message: 'Refresh token is expired',
+        });
+      }
+
+      const newAccessToken = this.jwtService.sign(
+        { userId: decoded.userId, email: decoded.email },
+        { expiresIn: '1m' },
+      );
+
+      return { access_token: newAccessToken };
+    } catch (error) {
+      throw new RpcException({
+        statusCode: HttpStatus.UNAUTHORIZED,
+        message: 'Could not refresh token',
       });
     }
   }
